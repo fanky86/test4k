@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Camera Resolution Test</title>
+<style>
+  :root{
+    --bg:#0b0e0c;
+    --panel:#121611;
+    --line:#1f281f;
+    --text:#d8e3d6;
+    --dim:#6c7a6a;
+    --ok:#7ee08a;
+    --warn:#e0c37e;
+    --bad:#e07e7e;
+    --accent:#3ddc84;
+    --mono: 'JetBrains Mono','SF Mono',Consolas,monospace;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--mono);}
+  body{padding:16px;padding-bottom:40px;min-height:100vh;}
+  h1{font-size:14px;letter-spacing:.14em;text-transform:uppercase;color:var(--dim);margin:0 0 2px;font-weight:600;}
+  .sub{font-size:11px;color:var(--dim);margin:0 0 4px;line-height:1.5;}
+  .accent{color:var(--accent);}
+  .real-tag{
+    display:inline-block;margin:8px 0 16px;font-size:10px;letter-spacing:.1em;
+    color:var(--ok);border:1px solid var(--ok);border-radius:4px;padding:3px 7px;
+  }
+
+  .stage{
+    position:relative;background:#000;border:1px solid var(--line);
+    border-radius:10px;overflow:hidden;aspect-ratio:16/10;
+    display:flex;align-items:center;justify-content:center;
+  }
+  video{width:100%;height:100%;object-fit:contain;background:#000;}
+  .stage-empty{color:var(--dim);font-size:12px;text-align:center;padding:20px;}
+  .badge{
+    position:absolute;top:10px;left:10px;background:rgba(0,0,0,.55);
+    border:1px solid var(--line);border-radius:6px;padding:4px 8px;
+    font-size:11px;color:var(--ok);letter-spacing:.05em;
+  }
+
+  .facing-toggle{display:flex;gap:8px;margin-top:14px;}
+  .facing-toggle button{flex:1;}
+
+  .controls{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  select,button{
+    font-family:var(--mono);font-size:12px;background:var(--panel);
+    color:var(--text);border:1px solid var(--line);border-radius:8px;
+    padding:10px 12px;
+  }
+  select{flex:1;min-width:120px;}
+  button{cursor:pointer;font-weight:600;letter-spacing:.03em;}
+  button.primary{background:var(--accent);color:#04140a;border-color:var(--accent);}
+  button.active{background:var(--accent);color:#04140a;border-color:var(--accent);}
+  button:active{transform:translateY(1px);}
+  button:disabled{opacity:.4;}
+
+  .section-title{
+    font-size:10px;text-transform:uppercase;letter-spacing:.14em;
+    color:var(--dim);margin:22px 0 8px;
+  }
+
+  table{width:100%;border-collapse:collapse;font-size:12px;}
+  td{padding:7px 4px;border-bottom:1px solid var(--line);}
+  td:first-child{color:var(--dim);width:46%;}
+  td:last-child{text-align:right;}
+
+  .ladder{display:flex;flex-direction:column;gap:6px;}
+  .rung{
+    border:1px solid var(--line);border-radius:8px;padding:9px 11px;
+    font-size:12px;display:flex;justify-content:space-between;align-items:center;
+  }
+  .rung .left{display:flex;align-items:center;gap:8px;}
+  .rung .target{color:var(--dim);font-size:10.5px;}
+  .rung .result{font-weight:600;}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+  .dot.ok{background:var(--ok);}
+  .dot.bad{background:var(--bad);}
+  .dot.pending{background:var(--dim);}
+  .rung.max .left{color:var(--accent);}
+
+  .log{
+    font-size:10.5px;color:var(--dim);white-space:pre-wrap;
+    border:1px dashed var(--line);border-radius:8px;padding:10px;
+    max-height:150px;overflow-y:auto;margin-top:10px;
+  }
+  .footer-note{font-size:10.5px;color:var(--dim);margin-top:24px;line-height:1.6;}
+</style>
+</head>
+<body>
+
+  <h1>Camera Resolution Probe</h1>
+  <p class="sub">Test dukungan resolusi kamera <span class="accent">depan &amp; belakang</span>, dari terendah sampai tertinggi (termasuk 4K).</p>
+  <div class="real-tag">● REAL DEVICE QUERY — getUserMedia langsung ke hardware, bukan simulasi</div>
+
+  <div class="stage" id="stage">
+    <div class="stage-empty" id="stageEmpty">Belum ada preview.<br>Pilih kamera lalu tekan "Mulai".</div>
+    <video id="video" autoplay playsinline muted style="display:none"></video>
+    <div class="badge" id="liveBadge" style="display:none">● LIVE</div>
+  </div>
+
+  <div class="facing-toggle">
+    <button id="facingBack" class="active">📷 Belakang</button>
+    <button id="facingFront">🤳 Depan</button>
+  </div>
+
+  <div class="controls">
+    <select id="deviceSelect"><option>Memuat daftar kamera…</option></select>
+    <button class="primary" id="startBtn">Mulai</button>
+    <button id="stopBtn" disabled>Stop</button>
+  </div>
+
+  <div class="section-title">Tangga resolusi — rendah → tinggi (hasil asli device)</div>
+  <div class="ladder" id="ladder"></div>
+
+  <div class="section-title">Track aktif sekarang</div>
+  <table id="actualTable"><tbody>
+    <tr><td>Kamera dipakai</td><td id="rDeviceLabel">—</td></tr>
+    <tr><td>Facing mode</td><td id="rFacing">—</td></tr>
+    <tr><td>Resolusi tercapai</td><td id="rActual">—</td></tr>
+    <tr><td>Frame rate</td><td id="rFps">—</td></tr>
+    <tr><td>Aspect ratio</td><td id="rAspect">—</td></tr>
+    <tr><td>Zoom didukung</td><td id="rZoom">—</td></tr>
+    <tr><td>Torch (senter) didukung</td><td id="rTorch">—</td></tr>
+    <tr><td>Batas max dilaporkan browser</td><td id="rMax">—</td></tr>
+  </table>
+
+  <div class="section-title">Log real-time</div>
+  <div class="log" id="log">Menunggu izin kamera…</div>
+
+  <p class="footer-note">
+    Setiap baris di tangga resolusi = satu panggilan <code>getUserMedia()</code> nyata dengan constraint
+    <code>exact</code> ke resolusi tsb. Kalau device/driver menolak, browser melempar
+    <code>OverconstrainedError</code> dan itu ditandai "Tidak didukung" — bukan tebakan.
+    Baris dengan hasil tertinggi yang berhasil = resolusi maksimum asli kamera tsb lewat WebView/Chromium.
+  </p>
+
+<script>
+const RESOLUTIONS = [
+  { label: '240p',        w: 426,  h: 240 },
+  { label: '480p SD',     w: 640,  h: 480 },
+  { label: '720p HD',     w: 1280, h: 720 },
+  { label: '1080p Full HD', w: 1920, h: 1080 },
+  { label: '1440p QHD',   w: 2560, h: 1440 },
+  { label: '4K UHD',      w: 3840, h: 2160 },
+  { label: '4K DCI',      w: 4096, h: 2160 },
+  { label: '8K UHD',      w: 7680, h: 4320 },
+];
+
+const els = {
+  video: document.getElementById('video'),
+  stageEmpty: document.getElementById('stageEmpty'),
+  liveBadge: document.getElementById('liveBadge'),
+  deviceSelect: document.getElementById('deviceSelect'),
+  startBtn: document.getElementById('startBtn'),
+  stopBtn: document.getElementById('stopBtn'),
+  ladder: document.getElementById('ladder'),
+  log: document.getElementById('log'),
+  facingBack: document.getElementById('facingBack'),
+  facingFront: document.getElementById('facingFront'),
+};
+
+let currentStream = null;
+let currentFacing = 'environment'; // 'environment' = belakang, 'user' = depan
+let logLines = [];
+let allDevices = [];
+
+function log(msg){
+  const t = new Date().toLocaleTimeString('id-ID', {hour12:false});
+  logLines.unshift(`[${t}] ${msg}`);
+  els.log.textContent = logLines.slice(0, 40).join('\n');
+}
+
+function renderLadder(){
+  els.ladder.innerHTML = RESOLUTIONS.map((r,i) => `
+    <div class="rung" id="rung-${i}">
+      <div class="left">
+        <span class="dot pending" id="dot-${i}"></span>
+        <span>${r.label}</span>
+      </div>
+      <div style="text-align:right">
+        <div class="target">${r.w}×${r.h}</div>
+        <div class="result" id="result-${i}">—</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function labelLooksLikeFacing(label, facing){
+  const l = (label || '').toLowerCase();
+  if(facing === 'environment') return /back|rear|belakang|environment|world/.test(l);
+  return /front|user|depan|selfie/.test(l);
+}
+
+async function refreshDeviceList(){
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  allDevices = devices.filter(d => d.kind === 'videoinput');
+  applyFacingFilter();
+}
+
+function applyFacingFilter(){
+  if(allDevices.length === 0){
+    els.deviceSelect.innerHTML = '<option value="">Tidak ada kamera terdeteksi</option>';
+    return;
+  }
+  // Prefer devices whose label matches the chosen facing; if labels are unavailable
+  // (no permission granted yet) or none match, fall back to showing all.
+  const matched = allDevices.filter(d => labelLooksLikeFacing(d.label, currentFacing));
+  const list = matched.length ? matched : allDevices;
+  els.deviceSelect.innerHTML = list.map((c,i) =>
+    `<option value="${c.deviceId}">${c.label || (currentFacing === 'environment' ? 'Kamera Belakang ' : 'Kamera Depan ') + (i+1)}</option>`
+  ).join('');
+}
+
+function setFacing(facing){
+  currentFacing = facing;
+  els.facingBack.classList.toggle('active', facing === 'environment');
+  els.facingFront.classList.toggle('active', facing === 'user');
+  applyFacingFilter();
+  log(`Pilih arah kamera: ${facing === 'environment' ? 'Belakang' : 'Depan'}`);
+}
+
+function buildConstraints(extra){
+  const deviceId = els.deviceSelect.value;
+  const base = deviceId
+    ? { deviceId: { exact: deviceId } }
+    : { facingMode: { ideal: currentFacing } };
+  return { video: { ...base, ...extra }, audio: false };
+}
+
+async function startCamera(){
+  stopCamera();
+  els.startBtn.disabled = true;
+  try{
+    const stream = await navigator.mediaDevices.getUserMedia(
+      buildConstraints({ width: { ideal: 3840 }, height: { ideal: 2160 } })
+    );
+    currentStream = stream;
+    els.video.srcObject = stream;
+    els.video.style.display = 'block';
+    els.stageEmpty.style.display = 'none';
+    els.liveBadge.style.display = 'block';
+    els.stopBtn.disabled = false;
+    log('Stream dimulai (real hardware).');
+
+    await refreshDeviceList(); // labels now available post-permission
+    readActualTrack(stream);
+    await runResolutionLadder();
+  }catch(e){
+    log('Gagal memulai kamera: ' + e.name + ' — ' + e.message);
+  }finally{
+    els.startBtn.disabled = false;
+  }
+}
+
+function stopCamera(){
+  if(currentStream){
+    currentStream.getTracks().forEach(t => t.stop());
+    currentStream = null;
+  }
+  els.video.style.display = 'none';
+  els.stageEmpty.style.display = 'block';
+  els.liveBadge.style.display = 'none';
+}
+
+function readActualTrack(stream){
+  const track = stream.getVideoTracks()[0];
+  if(!track) return;
+  const settings = track.getSettings ? track.getSettings() : {};
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+
+  document.getElementById('rDeviceLabel').textContent = track.label || '—';
+  document.getElementById('rFacing').textContent =
+    settings.facingMode || (currentFacing === 'environment' ? 'environment (diminta)' : 'user (diminta)');
+  document.getElementById('rActual').textContent =
+    settings.width && settings.height ? `${settings.width} × ${settings.height}` : '—';
+  document.getElementById('rFps').textContent =
+    settings.frameRate ? `${settings.frameRate.toFixed(1)} fps` : '—';
+  document.getElementById('rAspect').textContent =
+    settings.aspectRatio ? settings.aspectRatio.toFixed(3) : '—';
+  document.getElementById('rZoom').textContent = caps.zoom ? `Ya (${caps.zoom.min}–${caps.zoom.max})` : 'Tidak';
+  document.getElementById('rTorch').textContent = caps.torch ? 'Ya' : 'Tidak';
+  document.getElementById('rMax').textContent =
+    (caps.width && caps.height) ? `${caps.width.max} × ${caps.height.max}` : 'Tidak dilaporkan browser';
+
+  log(`Track aktif: ${track.label || 'kamera'} — ${settings.width}×${settings.height} @ ${settings.frameRate ? settings.frameRate.toFixed(0) : '?'}fps`);
+}
+
+async function runResolutionLadder(){
+  let highestOk = -1;
+  for(let i=0; i<RESOLUTIONS.length; i++){
+    const r = RESOLUTIONS[i];
+    const dot = document.getElementById(`dot-${i}`);
+    const result = document.getElementById(`result-${i}`);
+    const rungEl = document.getElementById(`rung-${i}`);
+    try{
+      const testStream = await navigator.mediaDevices.getUserMedia(
+        buildConstraints({ width: { exact: r.w }, height: { exact: r.h } })
+      );
+      const track = testStream.getVideoTracks()[0];
+      const s = track.getSettings ? track.getSettings() : {};
+      const achieved = s.width && s.height ? `${s.width}×${s.height}` : 'OK';
+      result.textContent = achieved;
+      dot.className = 'dot ok';
+      log(`${r.label} (${r.w}×${r.h}): DIDUKUNG → track nyata ${achieved}`);
+      track.stop();
+      highestOk = i;
+    }catch(e){
+      result.textContent = 'Tidak didukung';
+      dot.className = 'dot bad';
+      log(`${r.label} (${r.w}×${r.h}): DITOLAK device — ${e.name}`);
+    }
+    await new Promise(res => setTimeout(res, 120));
+  }
+  document.querySelectorAll('.rung').forEach(el => el.classList.remove('max'));
+  if(highestOk >= 0){
+    document.getElementById(`rung-${highestOk}`).classList.add('max');
+    log(`>>> Resolusi maksimum nyata: ${RESOLUTIONS[highestOk].label} (${RESOLUTIONS[highestOk].w}×${RESOLUTIONS[highestOk].h})`);
+  }
+}
+
+els.startBtn.addEventListener('click', startCamera);
+els.stopBtn.addEventListener('click', stopCamera);
+els.facingBack.addEventListener('click', () => setFacing('environment'));
+els.facingFront.addEventListener('click', () => setFacing('user'));
+
+renderLadder();
+navigator.mediaDevices.enumerateDevices().then(devices => {
+  allDevices = devices.filter(d => d.kind === 'videoinput');
+  applyFacingFilter();
+}).catch(()=>{});
+</script>
+</body>
+</html>

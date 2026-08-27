@@ -1,0 +1,11 @@
+{
+  "appId": "cloud.fankynas.camera4ktest",
+  "appName": "Camera 4K Test",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
